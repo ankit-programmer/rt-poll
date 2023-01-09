@@ -33,7 +33,7 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     /* Options */
     compression: uws.SHARED_COMPRESSOR,
     maxPayloadLength: 16 * 1024 * 1024,
-    idleTimeout: 12,
+    idleTimeout: 0,
     /* Handlers */
     open: async (ws: WebSocket<UserData>) => {
         try {
