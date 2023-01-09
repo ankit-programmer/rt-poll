@@ -43,7 +43,6 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
         // TODO: ANKIT: Validate and check for authorization
         // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
         const topic = `public:${type?.trim()}:${id?.trim()}`;
-        console.log(topic);
         ws.subscribe(topic);
 
     },
@@ -73,34 +72,39 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
         }
     },
     upgrade: async (res: HttpResponse, req: HttpRequest, context: us_socket_context_t) => {
-        const data = {
-            secWebSocketKey: req.getHeader("sec-websocket-key"),
-            secWebSocketProtocol: req.getHeader("sec-websocket-protocol"),
-            secWebSocketExtensions: req.getHeader("sec-websocket-extensions"),
-            context: context,
-            aborted: false,
-            res: res
-        }
-        res.onAborted(() => {
-            data.aborted = true;
-        });
-        // Authenticate user and add important details for further use.
-        const token = req.getHeader('Authorization') ? req.getHeader('Authorization')?.replace('Bearer ', '') : req.getQuery('token')?.toString();
-        const url = req.getUrl();
-        const user: any = await authenticate(token).catch(reason => {
-            logger.info("User not authenticated!");
-            data.res.writeStatus('401').write(reason?.message);
-            data.res.end();
-        });
-        if (!user) return;
-        if (!data.aborted) {
-            user.url = url;
-            data.res.upgrade(user as UserData, data.secWebSocketKey,
-                data.secWebSocketProtocol,
-                data.secWebSocketExtensions,
-                data.context)
-        } else {
-            logger.info("Connection closed. Skipping upgrade to WebSocket!");
+        try {
+
+            const data = {
+                secWebSocketKey: req.getHeader("sec-websocket-key"),
+                secWebSocketProtocol: req.getHeader("sec-websocket-protocol"),
+                secWebSocketExtensions: req.getHeader("sec-websocket-extensions"),
+                context: context,
+                aborted: false,
+                res: res
+            }
+            res.onAborted(() => {
+                data.aborted = true;
+            });
+            // Authenticate user and add important details for further use.
+            const token = req.getHeader('Authorization') ? req.getHeader('Authorization')?.replace('Bearer ', '') : req.getQuery('token')?.toString();
+            const url = req.getUrl();
+            const user: any = await authenticate(token).catch(reason => {
+                logger.info("User not authenticated!");
+                data.res.writeStatus('401').write(reason?.message);
+                data.res.end();
+            });
+            if (!user) return;
+            if (!data.aborted) {
+                user.url = url;
+                data.res.upgrade(user as UserData, data.secWebSocketKey,
+                    data.secWebSocketProtocol,
+                    data.secWebSocketExtensions,
+                    data.context)
+            } else {
+                logger.info("Connection closed. Skipping upgrade to WebSocket!");
+            }
+        } catch (error) {
+            logger.error(error);
         }
     },
     drain: (ws: WebSocket<UserData>) => {
