@@ -13,11 +13,9 @@ import { HttpRequest, HttpResponse, TemplatedApp, us_socket_context_t, WebSocket
 import client, { PubSub } from './configs/redis';
 import logger from './logger';
 import { StringDecoder } from 'string_decoder';
-import RedisClient from '@redis/client/dist/lib/client';
-import { timeStamp } from 'console';
 import { RedisClientType } from 'redis';
 const decoder = new StringDecoder('utf-8');
-const uwsPORT = 5000;
+const uwsPORT = 5000 || process.env.PORT;
 
 type Event = {
     action: 'join' | 'leave',
@@ -85,7 +83,6 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
         res.onAborted(() => {
             data.aborted = true;
         });
-        logger.info(req.getUrl());
         // Authenticate user and add important details for further use.
         const token = req.getHeader('Authorization') ? req.getHeader('Authorization')?.replace('Bearer ', '') : req.getQuery('token')?.toString();
         const url = req.getUrl();
