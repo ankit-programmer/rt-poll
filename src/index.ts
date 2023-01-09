@@ -38,11 +38,12 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     open: async (ws: WebSocket<UserData>) => {
         ws.send(JSON.stringify({ status: 'connected' }));
         const userData: UserData = ws as any as UserData;
-        const url = userData?.url;
-        const [type, id] = url?.split("/");
+        const url = userData?.url; // i.e /poll/pollId
+        const [baseUrl, type, id] = url?.split("/");
         // TODO: ANKIT: Validate and check for authorization
         // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
         const topic = `public:${type?.trim()}:${id?.trim()}`;
+        console.log(topic);
         ws.subscribe(topic);
 
     },
