@@ -1,67 +1,168 @@
-const uws = require('./uws/uws');
-import WebSocket, { WebSocketServer } from 'ws';
+/**
+ * Migration from Socket.IO to uWebSocket
+ * https://unetworkingab.medium.com/moving-from-socket-io-to-%C2%B5websockets-js-a85753b93a5a
+ * 
+ * Other Blogs from uWebSocket
+ * https://unetworkingab.medium.com/
+ */
+import dotenv from 'dotenv';
+dotenv.config();
+import admin from './configs/firebase';
+import uws from 'uWebSockets.js';
+import { HttpRequest, HttpResponse, TemplatedApp, us_socket_context_t, WebSocket } from 'uWebSockets.js/index';
+import client, { PubSub } from './configs/redis';
+import logger from './logger';
+import { StringDecoder } from 'string_decoder';
+import RedisClient from '@redis/client/dist/lib/client';
+import { timeStamp } from 'console';
+import { RedisClientType } from 'redis';
+const decoder = new StringDecoder('utf-8');
 const uwsPORT = 5000;
 
-const app = uws./*SSL*/App().ws('/*', {
+type Event = {
+    action: 'join' | 'leave',
+    id: string,
+    type: string
+}
+
+type UserData = {
+    [key: string]: any
+}
+
+
+
+const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     /* Options */
     compression: uws.SHARED_COMPRESSOR,
     maxPayloadLength: 16 * 1024 * 1024,
-    idleTimeout: 10,
+    idleTimeout: 12,
     /* Handlers */
-    open: (ws: any) => {
-        console.log(JSON.stringify(ws));
-        console.log('A WebSocket connected!');
-    },
-    message: (ws: any, message: any, isBinary: any) => {
-        console.log(JSON.stringify(ws));
-        /* Ok is false if backpressure was built up, wait for drain */
-        let ok = ws.send(message, isBinary);
+    open: async (ws: WebSocket<UserData>) => {
+        ws.send(JSON.stringify({ status: 'connected' }));
+        const userData: UserData = ws as any as UserData;
+        const url = userData?.url;
+        const [type, id] = url?.split("/");
+        // TODO: ANKIT: Validate and check for authorization
+        // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
+        const topic = `public:${type?.trim()}:${id?.trim()}`;
+        ws.subscribe(topic);
 
+    },
+    message: async (ws: WebSocket<UserData>, message: ArrayBuffer, isBinary: boolean) => {
+        const msg: Event = JSON.parse(decoder.write(Buffer.from(message)));
+        const key = `public:${msg?.type?.trim()}:${msg?.id?.trim()}`
+        switch (msg?.action) {
+            case 'join':
+                ws.subscribe(key);
+                break;
+            case 'leave':
+                ws.unsubscribe(key);
+                break;
+        }
 
     },
-    drain: (ws: any) => {
+
+    subscription: async (ws: WebSocket<UserData>, topic: ArrayBuffer, newCount: number, oldCount: number) => {
+        // Subscribe/ Unsubscribe to redis channels.
+        const room = decoder.write(Buffer.from(topic));
+        if (newCount > oldCount) {
+            // New Subscriber added
+            await pubSub.subscribe(room);
+        } else {
+            // Subscriber removed
+            await pubSub.unSubscribe(room);
+        }
+    },
+    upgrade: async (res: HttpResponse, req: HttpRequest, context: us_socket_context_t) => {
+        const data = {
+            secWebSocketKey: req.getHeader("sec-websocket-key"),
+            secWebSocketProtocol: req.getHeader("sec-websocket-protocol"),
+            secWebSocketExtensions: req.getHeader("sec-websocket-extensions"),
+            context: context,
+            aborted: false,
+            res: res
+        }
+        res.onAborted(() => {
+            data.aborted = true;
+        });
+        logger.info(req.getUrl());
+        // Authenticate user and add important details for further use.
+        const token = req.getHeader('Authorization') ? req.getHeader('Authorization')?.replace('Bearer ', '') : req.getQuery('token')?.toString();
+        const url = req.getUrl();
+        const user: any = await authenticate(token).catch(reason => {
+            logger.info("User not authenticated!");
+            data.res.writeStatus('401').write(reason?.message);
+            data.res.end();
+        });
+        if (!user) return;
+        if (!data.aborted) {
+            user.url = url;
+            data.res.upgrade(user as UserData, data.secWebSocketKey,
+                data.secWebSocketProtocol,
+                data.secWebSocketExtensions,
+                data.context)
+        } else {
+            logger.info("Connection closed. Skipping upgrade to WebSocket!");
+        }
+    },
+    drain: (ws: WebSocket<UserData>) => {
         console.log('WebSocket backpressure: ' + ws.getBufferedAmount());
     },
-    close: (ws: any, code: any, message: any) => {
-        console.log('WebSocket closed');
+    close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
+        logger.info("Connection closed!");
     }
 }).any('/*', (res: any, req: any) => {
     res.end('Nothing to see here!');
-}).listen(uwsPORT, (token: any) => {
+});
+
+
+const pubSub = new PubSub(app, client as RedisClientType);
+pubSub
+    .on('ready', () => {
+        app.listen(uwsPORT, (token: any) => {
+            if (token) {
+                console.log('Listening to port ' + uwsPORT);
+            } else {
+                console.log('Failed to listen to port ' + uwsPORT);
+            }
+        });
+    })
+    .on('error', (error) => {
+        logger.error(error);
+    })
+
+
+function delay(time: number = 1000) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            return resolve(true);
+        }, time);
+    })
+}
+
+async function authenticate(token: string) {
+    let user = null;
     if (token) {
-        console.log('Listening to port ' + uwsPORT);
+        await admin.auth().verifyIdToken(token, false).then(async (payload: any) => {
+            // res.locals is an object which can store intermediate values for the given request. http://expressjs.com/en/api.html#res.locals
+            user = payload
+        }).catch((error: any) => {
+            logger.error(error.code);
+            logger.error(error);
+            switch (error.code) {
+                case 'auth/id-token-expired':
+                    throw new Error('Token has expired. Please try with a fresh token.');
+                    break;
+
+                default:
+                    throw new Error('Authentication failed. Please authenticate yourself.');
+                    break;
+            }
+
+        });
+
     } else {
-        console.log('Failed to listen to port ' + uwsPORT);
+        logger.error("Token not found");
     }
-});
-
-const wss = new WebSocketServer({
-    port: 6000,
-    perMessageDeflate: {
-        zlibDeflateOptions: {
-            // See zlib defaults.
-            chunkSize: 1024,
-            memLevel: 7,
-            level: 3
-        },
-        zlibInflateOptions: {
-            chunkSize: 10 * 1024
-        },
-        // Other options settable:
-        clientNoContextTakeover: true, // Defaults to negotiated value.
-        serverNoContextTakeover: true, // Defaults to negotiated value.
-        serverMaxWindowBits: 10, // Defaults to negotiated value.
-        // Below options specified as default values.
-        concurrencyLimit: 10, // Limits zlib concurrency for perf.
-        threshold: 1024 // Size (in bytes) below which messages
-        // should not be compressed if context takeover is disabled.
-    }
-});
-
-wss.on('connection',(ws:any)=>{
-    console.log("A WebSocket Connected!")
-    ws.on('message',(data:any)=>{
-        ws.send(data.toString());
-    });
-})
-
+    return user;
+}
