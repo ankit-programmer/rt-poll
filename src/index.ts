@@ -36,14 +36,14 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     idleTimeout: 12,
     /* Handlers */
     open: async (ws: WebSocket<UserData>) => {
-        ws.send(JSON.stringify({ status: 'connected' }));
-        const userData: UserData = ws as any as UserData;
-        const url = userData?.url; // i.e /poll/pollId
-        const [baseUrl, type, id] = url?.split("/");
-        // TODO: ANKIT: Validate and check for authorization
-        // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
-        const topic = `public:${type?.trim()}:${id?.trim()}`;
-        ws.subscribe(topic);
+        // ws.send(JSON.stringify({ status: 'connected' }));
+        // const userData: UserData = ws as any as UserData;
+        // const url = userData?.url; // i.e /poll/pollId
+        // const [baseUrl, type, id] = url?.split("/");
+        // // TODO: ANKIT: Validate and check for authorization
+        // // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
+        // const topic = `public:${type?.trim()}:${id?.trim()}`;
+        // ws.subscribe(topic);
 
     },
     message: async (ws: WebSocket<UserData>, message: ArrayBuffer, isBinary: boolean) => {
