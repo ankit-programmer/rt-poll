@@ -57,11 +57,14 @@ export class PubSub extends EventEmitter {
             this.app.publish(room, message);
         });
     }
-    public async unSubscribe(room: string) {
-        const totalSub = this.app.numSubscribers(room);
-        if (totalSub == 0) {
-            await this.subscriber.unsubscribe(room);
-            this.subList.delete(room);
+    public async unSubscribe(room: string, totalSub: number = this.app.numSubscribers(room)) {
+        try {
+            if (totalSub == 0) {
+                await this.subscriber.unsubscribe(room);
+                this.subList.delete(room);
+            }
+        } catch (error) {
+            logger.error(error);
         }
     }
 }

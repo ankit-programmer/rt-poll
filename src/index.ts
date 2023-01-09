@@ -33,7 +33,7 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     /* Options */
     compression: uws.SHARED_COMPRESSOR,
     maxPayloadLength: 16 * 1024 * 1024,
-    idleTimeout: 0,
+    idleTimeout: 30 * 60,
     /* Handlers */
     open: async (ws: WebSocket<UserData>) => {
         try {
@@ -67,16 +67,22 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
     },
 
     subscription: async (ws: WebSocket<UserData>, topic: ArrayBuffer, newCount: number, oldCount: number) => {
+        /**
+         * NOTE: 
+         * 
+         * Subscriber is being removed but not removed yet. 
+         * So, app.numSubscribers(room) will return oldCount in this block.
+         * 
+         */
         try {
-
             // Subscribe/ Unsubscribe to redis channels.
             const room = decoder.write(Buffer.from(topic));
             if (newCount > oldCount) {
-                // New Subscriber added
+                // New Subscriber is being added
                 await pubSub.subscribe(room);
             } else {
-                // Subscriber removed
-                await pubSub.unSubscribe(room);
+                // A Subscriber is being removed
+                await pubSub.unSubscribe(room, newCount);
             }
         } catch (error) {
             logger.error(error);
