@@ -46,7 +46,7 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
             // TODO: ANKIT: Centralize the key/topic creation process to reduce the chance of inconsistency
             const topic = `public:${type?.trim()}:${id?.trim()}`;
             logger.info(topic);
-            // ws.subscribe('public:poll:pollId');
+            ws.subscribe(topic);
         } catch (error) {
             logger.error(error);
         }
@@ -68,14 +68,14 @@ const app: TemplatedApp = uws./*SSL*/App().ws('/*', {
 
     subscription: async (ws: WebSocket<UserData>, topic: ArrayBuffer, newCount: number, oldCount: number) => {
         // Subscribe/ Unsubscribe to redis channels.
-        const room = decoder.write(Buffer.from(topic));
-        if (newCount > oldCount) {
-            // New Subscriber added
-            await pubSub.subscribe(room);
-        } else {
-            // Subscriber removed
-            await pubSub.unSubscribe(room);
-        }
+        // const room = decoder.write(Buffer.from(topic));
+        // if (newCount > oldCount) {
+        //     // New Subscriber added
+        //     await pubSub.subscribe(room);
+        // } else {
+        //     // Subscriber removed
+        //     await pubSub.unSubscribe(room);
+        // }
     },
     upgrade: async (res: HttpResponse, req: HttpRequest, context: us_socket_context_t) => {
         try {
