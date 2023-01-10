@@ -182,6 +182,7 @@ async function authenticate(token: string) {
 
     } else {
         logger.error("Token not found");
+        throw new Error("Token not found");
     }
     return user;
 }
