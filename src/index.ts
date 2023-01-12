@@ -15,7 +15,7 @@ import logger from './logger';
 import { StringDecoder } from 'string_decoder';
 import { RedisClientType } from 'redis';
 const decoder = new StringDecoder('utf-8');
-const uwsPORT = 5000 || process.env.PORT;
+const uwsPORT = parseInt(process.env.PORT || '5000');
 
 type Event = {
     action: 'join' | 'leave',
